@@ -8,6 +8,8 @@ open OpenTK
 open OpenTK.Graphics
 open OpenTK.Graphics.OpenGL4
 open OpenTK.Input
+open RenderObject
+open Vertex
 
 type MainWindow () as mw =
     inherit GameWindow(750,
@@ -24,8 +26,11 @@ type MainWindow () as mw =
     let mutable _program = 0
     let mutable _vertexArray = 0
     let mutable _time = 0.
-    let mutable _frames = 50L
-    let mutable _factor = 0.
+    let mutable _renderObjects = new System.Collections.Generic.List<RenderObject>()
+
+
+    //let mutable _frames = 50L
+    //let mutable _factor = 0.
     let onClosed(evenArgs: System.EventArgs) = mw.Exit()
     let HandleKeyBoard() =
         let keyState = Keyboard.GetState()
@@ -35,7 +40,7 @@ type MainWindow () as mw =
     let defaultShaderPath = 
         @"G:\NetWorkDrive\Dropbox\dev\F#\openTk\Tutorial\fsOpenTkTurorial\fsOpenTkTurorial\Components\Shaders\"
 
-    member private mw.CompileShaders(shaderType: ShaderType, path: string) =
+    let CompileShaders(shaderType: ShaderType, path: string) =
         let shader = GL.CreateShader(shaderType)
         let src = File.ReadAllText(path)
         GL.ShaderSource(shader, src)
@@ -44,13 +49,13 @@ type MainWindow () as mw =
         if info <> "" then 
             printfn "GL.CompileShader [%A] had info log: %A" shaderType info
         shader
-    member private mw.CreateProgram() =
+    let CreateProgram() =
         let program = GL.CreateProgram()
         let shaders = [
-            mw.CompileShaders(ShaderType.VertexShader, 
+            CompileShaders(ShaderType.VertexShader, 
                               //defaultShaderPath + @"1Vert\vertexShader.c")
                               defaultShaderPath + @"vertexShader.vert")
-            mw.CompileShaders(ShaderType.FragmentShader, 
+            CompileShaders(ShaderType.FragmentShader, 
                               //defaultShaderPath + @"5Frag\fragmentShader.c")
                               defaultShaderPath + @"fragmentShader.vert")
         ]
@@ -69,27 +74,21 @@ type MainWindow () as mw =
     override mw.OnResize(e: System.EventArgs) =
         GL.Viewport(0, 0, mw.Width, mw.Height)
     override mw.OnLoad(e: System.EventArgs) =
+        let vertices = [|
+            new Vertex(new Vector4(-0.25f, 0.25f, 0.5f, 1.f), Color4.HotPink)
+            new Vertex(new Vector4( 0.0f, -0.25f, 0.5f, 1.f), Color4.HotPink)
+            new Vertex(new Vector4( 0.25f, 0.25f, 0.5f, 1.f), Color4.HotPink)
+        |]
+        _renderObjects.Add(new RenderObject(vertices))
         mw.CursorVisible <- true
-        _program <- mw.CreateProgram()
-        _vertexArray <- GL.GenVertexArrays(1)
-        GL.BindVertexArray(_vertexArray)
-        GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Line)
+        _program <- CreateProgram()
+        GL.PolygonMode(MaterialFace.FrontAndBack, PolygonMode.Fill)
         GL.PatchParameter(PatchParameterInt.PatchVertices, 3)
         mw.Closed.Add(onClosed)
     override mw.OnUpdateFrame(e: FrameEventArgs) =
         HandleKeyBoard() 
     override mw.OnRenderFrame(e: FrameEventArgs) =
         _time <- e.Time + _time
-        //let frame60 = _frames % 60L
-        if _frames = 60L then
-            _frames <- 0L
-            if _factor > 100. then
-                _factor <- 0.
-            else
-                _factor <- _factor + 25.
-        else
-            _frames <- 1L + _frames
-        //printfn "_time: %A" _time
         mw.Title <- sprintf "%s | (Vsync: %A) FPS: %.0f" _title mw.VSync (1. / e.Time)
         let mutable backColor = new Color4()
         backColor.A <- 1.f
@@ -100,25 +99,12 @@ type MainWindow () as mw =
         GL.Clear(ClearBufferMask.ColorBufferBit 
                  ||| ClearBufferMask.DepthBufferBit)
         GL.UseProgram(_program)
-        // add shader attributes here
-        //GL.VertexAttrib1(0, _time)
-        GL.VertexAttrib1(0, _factor / 100.)
-
-        let mutable position = new Vector4()
-        position.X <- System.Math.Sin(_time) * 0.5 |> float32
-        //printfn "System.Math.Sin(_time) * 0.5 |> float32: %A" (System.Math.Sin(_time) * 0.5 |> float32)
-        position.Y <- System.Math.Cos(_time) * 0.5 |> float32
-        position.Z <- 0.f
-        position.W <- 1.f
-        GL.VertexAttrib4(1, position)
-        // add shader attributes end
-        GL.DrawArrays(PrimitiveType.Patches, 0, 3)
-        GL.PointSize(10.f)
+        for obj in _renderObjects do obj.Render()
         mw.SwapBuffers()
     override mw.Exit() =
         //For Debug
         printfn "mw existed"
-        GL.DeleteVertexArrays(1, ref _vertexArray)
+        for (obj: RenderObject) in _renderObjects do (obj:>IDisposable).Dispose()
         GL.DeleteProgram(_program)
         base.Exit()
 
